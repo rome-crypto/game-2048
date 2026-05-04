@@ -173,6 +173,10 @@ class _Game2048PageState extends State<Game2048Page> {
   late final int rowCount;
   late final int colCount;
   final Random _random = Random();
+  double _startX = 0;
+  double _startY = 0;
+  double _endX = 0;
+  double _endY = 0;
 
   late List<List<int>> _board;
   int _score = 0;
@@ -351,23 +355,7 @@ class _Game2048PageState extends State<Game2048Page> {
     }
   }
 
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    if (details.primaryVelocity == null) return;
-    if (details.primaryVelocity! > 0) {
-      _tryMove(_moveRight);
-    } else if (details.primaryVelocity! < 0) {
-      _tryMove(_moveLeft);
-    }
-  }
-
-  void _onVerticalDragEnd(DragEndDetails details) {
-    if (details.primaryVelocity == null) return;
-    if (details.primaryVelocity! > 0) {
-      _tryMove(_moveDown);
-    } else if (details.primaryVelocity! < 0) {
-      _tryMove(_moveUp);
-    }
-  }
+  
 
   Color _tileColor(int value) {
     switch (value) {
@@ -454,8 +442,34 @@ class _Game2048PageState extends State<Game2048Page> {
                     child: AspectRatio(
                       aspectRatio: colCount / rowCount,
                       child: GestureDetector(
-                        onHorizontalDragEnd: _onHorizontalDragEnd,
-                        onVerticalDragEnd: _onVerticalDragEnd,
+                        onPanStart: (details) {
+                          _startX = details.localPosition.dx;
+                          _startY = details.localPosition.dy;
+                        },
+                        onPanUpdate: (details) {
+                          _endX = details.localPosition.dx;
+                          _endY = details.localPosition.dy;
+                        },
+                        onPanEnd: (details) {
+                          final dx = _endX - _startX;
+                          final dy = _endY - _startY;
+
+                          if (dx.abs() < 20 && dy.abs() < 20) return;
+
+                          if (dx.abs() > dy.abs()) {
+                            if (dx > 0) {
+                              _tryMove(_moveRight);
+                            } else {
+                              _tryMove(_moveLeft);
+                            }
+                          } else {
+                            if (dy > 0) {
+                              _tryMove(_moveDown);
+                            } else {
+                              _tryMove(_moveUp);
+                            }
+                          }
+                        },
                         child: GridView.builder(
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -468,6 +482,7 @@ class _Game2048PageState extends State<Game2048Page> {
                             final row = index ~/ colCount;
                             final col = index % colCount;
                             final value = _board[row][col];
+
                             return Container(
                               decoration: BoxDecoration(
                                 color: _tileColor(value),
@@ -479,8 +494,8 @@ class _Game2048PageState extends State<Game2048Page> {
                                     : Text(
                                         '$value',
                                         style: TextStyle(
-                                          fontSize: value < 100 ? 32 : value < 1000 ? 28 : 24,
-                                          fontWeight: FontWeight.w700,
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.bold,
                                           color: _tileTextColor(value),
                                         ),
                                       ),
