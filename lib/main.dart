@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:io';
+import 'dart:io' show Platform, Process;
 import 'dart:math';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +32,184 @@ class HelpIntent extends Intent {
   const HelpIntent();
 }
 
+// --- СИСТЕМА ЛОКАЛИЗАЦИИ ---
+enum AppLanguage { ru, en, zh }
+
+class Localization {
+  static const Map<AppLanguage, Map<String, String>> _localizedValues = {
+    AppLanguage.ru: {
+      'title': '2048',
+      'select_mode': 'Выберите режим игры',
+      'start_btn': 'Пуск',
+      'score': 'Счет',
+      'best': 'Рекорд',
+      'game_over': 'Игра окончена',
+      'home_tooltip': 'Главное меню',
+      'refresh_tooltip': 'Перезапустить',
+      'undo_tooltip': 'Шаг назад',
+      'help_tooltip': 'Помощь (F1)',
+      'lang_dialog_title': 'Выберите язык',
+      'help_title': 'Руководство пользователя',
+      'help_rules_title': 'Правила игры',
+      'help_rules_text': '1. Используйте свайпы (вверх, вниз, влево, вправо), чтобы перемещать плитки на игровом поле.\n\n2. При столкновении двух плиток одинакового номинала они объединяются в одну, значение которой удваивается (2 + 2 = 4, 4 + 4 = 8 и так далее).\n\n3. После каждого вашего хода на случайном свободном месте поля появляется новая плитка номиналом 2 или 4.\n\n4. Ваша цель — объединять плитки и набрать как можно больше очков, стремясь получить плитку номиналом 2048 (и идти дальше!).\n\n5. Игра заканчивается, когда всё поле заполнено и ни одну плитку невозможно сдвинуть или объединить с соседней.',
+      'help_controls_title': 'Управление',
+      'help_controls_text': '• На смартфонах: Жесты свайпа по экрану в нужном направлении.\n• На ПК: Клавиша F1 в любой момент игры открывает справку.',
+      'help_close': 'Закрыть',
+    },
+    AppLanguage.en: {
+      'title': '2048',
+      'select_mode': 'Select Game Mode',
+      'start_btn': 'Start',
+      'score': 'Score',
+      'best': 'Best',
+      'game_over': 'Game Over',
+      'home_tooltip': 'Main Menu',
+      'refresh_tooltip': 'Restart',
+      'undo_tooltip': 'Undo Move',
+      'help_tooltip': 'Help (F1)',
+      'lang_dialog_title': 'Select Language',
+      'help_title': 'User Guide',
+      'help_rules_title': 'How to Play',
+      'help_rules_text': '1. Swipe (Up, Down, Left, Right) to move all tiles on the board.\n\n2. When two tiles with the same number touch, they merge into one with double the value (2 + 2 = 4, 4 + 4 = 8, etc.).\n\n3. After every move, a new tile (valued 2 or 4) randomly appears in an empty space.\n\n4. Your goal is to combine tiles, earn maximum points, and reach the 2048 tile (and beyond!).\n\n5. The game ends when the board is full and no legal moves can be made (no empty spaces and no adjacent matching tiles).',
+      'help_controls_title': 'Controls',
+      'help_controls_text': '• On Mobile: Swipe gestures on the screen.\n• On PC: Press F1 key anytime during gameplay to open help.',
+      'help_close': 'Close',
+    },
+    AppLanguage.zh: {
+      'title': '2048',
+      'select_mode': '选择游戏模式',
+      'start_btn': '开始游戏',
+      'score': '得分',
+      'best': '最高分',
+      'game_over': '游戏结束',
+      'home_tooltip': '主菜单',
+      'refresh_tooltip': '重新开始',
+      'undo_tooltip': '撤销一步',
+      'help_tooltip': '帮助 (F1)',
+      'lang_dialog_title': '选择语言',
+      'help_title': '用户指南',
+      'help_rules_title': '游戏规则',
+      'help_rules_text': '1. 通过向任意方向滑动屏幕（上、下、左、右）来移動所有方块。\n\n2. 当两个相同数字的方块撞在一起时，它们会合并成一个数字翻倍的新方块（如 2 + 2 = 4，4 + 4 = 8 等）。\n\n3. 每次滑动后，空白处会随机出现一个数字为 2 或 4 的新方块。\n\n4. 您的目标是不断合并方块以获得更高的分数，并努力拼出 “2048” 方块（甚至更高）！\n\n5. 当格子全部填满，且没有任何相邻方块数字相同时，游戏结束。',
+      'help_controls_title': '操作说明',
+      'help_controls_text': '• 手机端：在屏幕上顺着想要移动的方向滑动。\n• 电脑端：游戏中随时按下 F1 键即可调出帮助菜单。',
+      'help_close': '关闭',
+    },
+  };
+
+  static String getText(AppLanguage lang, String key) {
+    return _localizedValues[lang]?[key] ?? key;
+  }
+}
+
+void showLanguageDialog(BuildContext context, AppLanguage currentLang, ValueChanged<AppLanguage> onLangChanged) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text(Localization.getText(currentLang, 'lang_dialog_title')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Русский'),
+              trailing: currentLang == AppLanguage.ru ? const Icon(Icons.check, color: Colors.orange) : null,
+              onTap: () {
+                onLangChanged(AppLanguage.ru);
+                Navigator.of(context).pop();
+              },
+            ),
+            ListTile(
+              title: const Text('English'),
+              trailing: currentLang == AppLanguage.en ? const Icon(Icons.check, color: Colors.orange) : null,
+              onTap: () {
+                onLangChanged(AppLanguage.en);
+                Navigator.of(context).pop();
+              },
+            ),
+            ListTile(
+              title: const Text('中文'),
+              trailing: currentLang == AppLanguage.zh ? const Icon(Icons.check, color: Colors.orange) : null,
+              onTap: () {
+                onLangChanged(AppLanguage.zh);
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+// --- НОВАЯ СТРАНИЦА ОФФЛАЙН-СПРАВКИ ---
+class OfflineHelpPage extends StatelessWidget {
+  final AppLanguage currentLang;
+  const OfflineHelpPage({super.key, required this.currentLang});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFAF8EF),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFBBADA0),
+        title: Text(
+          Localization.getText(currentLang, 'help_title'),
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                Localization.getText(currentLang, 'help_rules_title'),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF776E65)),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                Localization.getText(currentLang, 'help_rules_text'),
+                style: const TextStyle(fontSize: 16, color: Color(0xFF3C3A32), height: 1.4),
+              ),
+              const Divider(height: 40, color: Color(0xFFCDC1B4), thickness: 1.5),
+              Text(
+                Localization.getText(currentLang, 'help_controls_title'),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF776E65)),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                Localization.getText(currentLang, 'help_controls_text'),
+                style: const TextStyle(fontSize: 16, color: Color(0xFF3C3A32), height: 1.5),
+              ),
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8F7A66),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    Localization.getText(currentLang, 'help_close'),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class MainMenuPage extends StatefulWidget {
   const MainMenuPage({super.key});
 
@@ -47,11 +226,29 @@ class _MainMenuPageState extends State<MainMenuPage> {
   ];
 
   late GameModeOption _selectedMode;
+  AppLanguage _currentLang = AppLanguage.ru;
+  late SharedPreferences _prefs;
 
   @override
   void initState() {
     super.initState();
     _selectedMode = availableModes.firstWhere((mode) => mode.available);
+    _loadLanguage();
+  }
+
+  void _loadLanguage() async {
+    _prefs = await SharedPreferences.getInstance();
+    final langIndex = _prefs.getInt('app_lang') ?? AppLanguage.ru.index;
+    setState(() {
+      _currentLang = AppLanguage.values[langIndex];
+    });
+  }
+
+  void _changeLanguage(AppLanguage lang) async {
+    setState(() {
+      _currentLang = lang;
+    });
+    await _prefs.setInt('app_lang', lang.index);
   }
 
   @override
@@ -59,87 +256,105 @@ class _MainMenuPageState extends State<MainMenuPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAF8EF),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 40),
-              const Text(
-                '2048',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 42,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF776E65),
+        child: Stack(
+          children: [
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: Image.asset(
+                  'assets/icon/globe.png',
+                  width: 32,
+                  height: 32,
+                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.language, size: 32),
                 ),
+                onPressed: () => showLanguageDialog(context, _currentLang, _changeLanguage),
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Выберите режим игры',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, color: Color(0xFF776E65)),
-              ),
-              const SizedBox(height: 24),
-              ...availableModes.map((mode) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: GestureDetector(
-                      onTap: mode.available
-                          ? () => setState(() {
-                                _selectedMode = mode;
-                              })
-                          : null,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-                        decoration: BoxDecoration(
-                          color: mode == _selectedMode ? const Color(0xFFBBADA0) : const Color(0xFFEDE0C8),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: mode.available ? const Color(0xFF776E65) : const Color(0xFFB0A69B),
-                            width: mode == _selectedMode ? 2 : 1,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                mode.label,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: mode.available ? const Color(0xFF3C3A32) : const Color(0xFF8F7A66),
-                                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 40),
+                  Text(
+                    Localization.getText(_currentLang, 'title'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 42,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF776E65),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    Localization.getText(_currentLang, 'select_mode'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18, color: Color(0xFF776E65)),
+                  ),
+                  const SizedBox(height: 24),
+                  ...availableModes.map((mode) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: GestureDetector(
+                          onTap: mode.available
+                              ? () => setState(() {
+                                    _selectedMode = mode;
+                                  })
+                              : null,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                            decoration: BoxDecoration(
+                              color: mode == _selectedMode ? const Color(0xFFBBADA0) : const Color(0xFFEDE0C8),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: mode.available ? const Color(0xFF776E65) : const Color(0xFFB0A69B),
+                                width: mode == _selectedMode ? 2 : 1,
                               ),
                             ),
-                          ],
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    mode.label,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: mode.available ? const Color(0xFF3C3A32) : const Color(0xFF8F7A66),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                      )),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => Game2048Page(
+                            rows: _selectedMode.rows,
+                            cols: _selectedMode.cols,
+                            currentLang: _currentLang,
+                          ),
+                        ),
+                      ).then((_) => _loadLanguage());
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF8F7A66),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                  )),
-              const Spacer(),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => Game2048Page(
-                        rows: _selectedMode.rows,
-                        cols: _selectedMode.cols,
-                      ),
+                    child: Text(
+                      Localization.getText(_currentLang, 'start_btn'),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
-                  ).then((_) => setState(() {}));
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8F7A66),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: const Text(
-                  'Пуск',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -167,7 +382,7 @@ class TileModel {
   int col;
   bool isNew;
   bool isMerged;
-  bool isToDestroy; // Флаг для плитки, которая заезжает под другую и уничтожается
+  bool isToDestroy;
 
   TileModel({
     required this.id,
@@ -185,10 +400,12 @@ class Game2048Page extends StatefulWidget {
     super.key,
     required this.rows,
     required this.cols,
+    required this.currentLang,
   });
 
   final int rows;
   final int cols;
+  final AppLanguage currentLang;
 
   @override
   State<Game2048Page> createState() => _Game2048PageState();
@@ -210,12 +427,14 @@ class _Game2048PageState extends State<Game2048Page> {
 
   late SharedPreferences _prefs;
   bool _isInitialized = false;
+  late AppLanguage _gameLang;
 
   @override
   void initState() {
     super.initState();
     rowCount = widget.rows;
     colCount = widget.cols;
+    _gameLang = widget.currentLang;
     _initStorageAndLoad();
   }
 
@@ -279,7 +498,6 @@ class _Game2048PageState extends State<Game2048Page> {
       await _prefs.remove('saved_score_$modeKey');
       await _prefs.remove('saved_gameover_$modeKey');
     } else {
-      // Сохраняем только живые плитки (исключая те, что в процессе удаления)
       final boardData = _tiles.where((t) => !t.isToDestroy).map((tile) => {
         'id': tile.id,
         'value': tile.value,
@@ -301,7 +519,9 @@ class _Game2048PageState extends State<Game2048Page> {
   }
 
   void _undoMove() {
-    if (!_canUndo || _lastGameState == null) return;
+    if (!_canUndo || _lastGameState == null) {
+      return;
+    }
     
     setState(() {
       _tiles = _lastGameState!.tiles.map((t) => TileModel(
@@ -319,13 +539,37 @@ class _Game2048PageState extends State<Game2048Page> {
     });
   }
 
+  // --- КРОССПЛАТФОРМЕННЫЙ КОРРЕКТНЫЙ МЕТОД ОТКРЫТИЯ СПРАВКИ ---
   void _openHelp({String? contextPage}) async {
-    const String helpFile = 'New_help.chm';
-    if (contextPage != null) {
-      await Process.run('hh.exe', ['$helpFile::/$contextPage']);
+    // Если это Web (браузер) или мобилки (Android/iOS)
+    if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OfflineHelpPage(currentLang: _gameLang),
+          ),
+        );
+      }
     } else {
-      await Process.run('hh.exe', [helpFile]);
+      // Этот блок выполнится ТОЛЬКО в нативном Windows/macOS/Linux приложении
+      try {
+        const String helpFile = 'New_help.chm';
+        if (contextPage != null) {
+          await Process.run('hh.exe', ['$helpFile::/$contextPage']);
+        } else {
+          await Process.run('hh.exe', [helpFile]);
+        }
+      } catch (e) {
+        debugPrint('Ошибка запуска chm на десктопе: $e');
+      }
     }
+  }
+
+  void _changeLanguage(AppLanguage lang) async {
+    setState(() {
+      _gameLang = lang;
+    });
+    await _prefs.setInt('app_lang', lang.index);
   }
 
   void _addRandomTile() {
@@ -343,7 +587,9 @@ class _Game2048PageState extends State<Game2048Page> {
       }
     }
 
-    if (emptyCells.isEmpty) return;
+    if (emptyCells.isEmpty) {
+      return;
+    }
     final position = emptyCells[_random.nextInt(emptyCells.length)];
     final val = _random.nextInt(10) == 0 ? 4 : 2;
 
@@ -357,9 +603,10 @@ class _Game2048PageState extends State<Game2048Page> {
   }
 
   void _tryMove(void Function() moveDirection) {
-    if (_gameOver) return;
+    if (_gameOver) {
+      return;
+    }
 
-    // Удаляем старые уничтоженные плитки перед новым ходом, если они остались
     _tiles.removeWhere((t) => t.isToDestroy);
 
     final tilesBefore = _tiles.map((t) => TileModel(id: t.id, value: t.value, row: t.row, col: t.col)).toList();
@@ -381,7 +628,6 @@ class _Game2048PageState extends State<Game2048Page> {
         break;
       }
     }
-    // Также свайп засчитывается, если появились плитки на уничтожение (было слияние)
     if (_tiles.any((t) => t.isToDestroy)) {
       moved = true;
     }
@@ -401,7 +647,6 @@ class _Game2048PageState extends State<Game2048Page> {
       setState(() {});
       _saveCurrentState();
 
-      // Через 200мс (время окончания анимации переезда) очищаем заехавшие плитки
       Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted) {
           setState(() {
@@ -417,23 +662,25 @@ class _Game2048PageState extends State<Game2048Page> {
       var rowTiles = _tiles.where((t) => t.row == r && !t.isToDestroy).toList();
       rowTiles.sort((a, b) => a.col.compareTo(b.col));
 
-      var targetCol = 0;
-      for (var i = 0; i < rowTiles.length; i++) {
-        var current = rowTiles[i];
-        if (targetCol > 0 && rowTiles[i - 1].value == current.value && !rowTiles[i - 1].isMerged) {
-          var targetTile = rowTiles[i - 1];
-          
-          // Текущая плитка въезжает в целевую
-          current.col = targetTile.col;
-          current.isToDestroy = true; 
+      int targetCol = 0;
+      TileModel? lastMergedCandidate;
 
-          // Целевая плитка помечается как объединившаяся
-          targetTile.value *= 2;
-          targetTile.isMerged = true;
-          _score += targetTile.value;
+      for (final tile in rowTiles) {
+        if (lastMergedCandidate != null &&
+            !lastMergedCandidate.isMerged &&
+            lastMergedCandidate.value == tile.value) {
+          tile.col = lastMergedCandidate.col;
+          tile.isToDestroy = true;
+
+          lastMergedCandidate.value *= 2;
+          lastMergedCandidate.isMerged = true;
+
+          _score += lastMergedCandidate.value;
+          lastMergedCandidate = null;
         } else {
-          current.col = targetCol;
+          tile.col = targetCol;
           targetCol++;
+          lastMergedCandidate = tile;
         }
       }
     }
@@ -444,20 +691,25 @@ class _Game2048PageState extends State<Game2048Page> {
       var rowTiles = _tiles.where((t) => t.row == r && !t.isToDestroy).toList();
       rowTiles.sort((a, b) => b.col.compareTo(a.col));
 
-      var targetCol = colCount - 1;
-      for (var i = 0; i < rowTiles.length; i++) {
-        var current = rowTiles[i];
-        if (targetCol < colCount - 1 && rowTiles[i - 1].value == current.value && !rowTiles[i - 1].isMerged) {
-          var targetTile = rowTiles[i - 1];
-          current.col = targetTile.col;
-          current.isToDestroy = true;
+      int targetCol = colCount - 1;
+      TileModel? lastMergedCandidate;
 
-          targetTile.value *= 2;
-          targetTile.isMerged = true;
-          _score += targetTile.value;
+      for (final tile in rowTiles) {
+        if (lastMergedCandidate != null &&
+            !lastMergedCandidate.isMerged &&
+            lastMergedCandidate.value == tile.value) {
+          tile.col = lastMergedCandidate.col;
+          tile.isToDestroy = true;
+
+          lastMergedCandidate.value *= 2;
+          lastMergedCandidate.isMerged = true;
+
+          _score += lastMergedCandidate.value;
+          lastMergedCandidate = null;
         } else {
-          current.col = targetCol;
+          tile.col = targetCol;
           targetCol--;
+          lastMergedCandidate = tile;
         }
       }
     }
@@ -468,20 +720,25 @@ class _Game2048PageState extends State<Game2048Page> {
       var colTiles = _tiles.where((t) => t.col == c && !t.isToDestroy).toList();
       colTiles.sort((a, b) => a.row.compareTo(b.row));
 
-      var targetRow = 0;
-      for (var i = 0; i < colTiles.length; i++) {
-        var current = colTiles[i];
-        if (targetRow > 0 && colTiles[i - 1].value == current.value && !colTiles[i - 1].isMerged) {
-          var targetTile = colTiles[i - 1];
-          current.row = targetTile.row;
-          current.isToDestroy = true;
+      int targetRow = 0;
+      TileModel? lastMergedCandidate;
 
-          targetTile.value *= 2;
-          targetTile.isMerged = true;
-          _score += targetTile.value;
+      for (final tile in colTiles) {
+        if (lastMergedCandidate != null &&
+            !lastMergedCandidate.isMerged &&
+            lastMergedCandidate.value == tile.value) {
+          tile.row = lastMergedCandidate.row;
+          tile.isToDestroy = true;
+
+          lastMergedCandidate.value *= 2;
+          lastMergedCandidate.isMerged = true;
+
+          _score += lastMergedCandidate.value;
+          lastMergedCandidate = null;
         } else {
-          current.row = targetRow;
+          tile.row = targetRow;
           targetRow++;
+          lastMergedCandidate = tile;
         }
       }
     }
@@ -492,27 +749,34 @@ class _Game2048PageState extends State<Game2048Page> {
       var colTiles = _tiles.where((t) => t.col == c && !t.isToDestroy).toList();
       colTiles.sort((a, b) => b.row.compareTo(a.row));
 
-      var targetRow = rowCount - 1;
-      for (var i = 0; i < colTiles.length; i++) {
-        var current = colTiles[i];
-        if (targetRow < rowCount - 1 && colTiles[i - 1].value == current.value && !colTiles[i - 1].isMerged) {
-          var targetTile = colTiles[i - 1];
-          current.row = targetTile.row;
-          current.isToDestroy = true;
+      int targetRow = rowCount - 1;
+      TileModel? lastMergedCandidate;
 
-          targetTile.value *= 2;
-          targetTile.isMerged = true;
-          _score += targetTile.value;
+      for (final tile in colTiles) {
+        if (lastMergedCandidate != null &&
+            !lastMergedCandidate.isMerged &&
+            lastMergedCandidate.value == tile.value) {
+          tile.row = lastMergedCandidate.row;
+          tile.isToDestroy = true;
+
+          lastMergedCandidate.value *= 2;
+          lastMergedCandidate.isMerged = true;
+
+          _score += lastMergedCandidate.value;
+          lastMergedCandidate = null;
         } else {
-          current.row = targetRow;
+          tile.row = targetRow;
           targetRow--;
+          lastMergedCandidate = tile;
         }
       }
     }
   }
 
   bool _canMove() {
-    if (_tiles.where((t) => !t.isToDestroy).length < rowCount * colCount) return true;
+    if (_tiles.where((t) => !t.isToDestroy).length < rowCount * colCount) {
+      return true;
+    }
 
     var grid = List.generate(rowCount, (_) => List.filled(colCount, 0));
     for (var tile in _tiles.where((t) => !t.isToDestroy)) {
@@ -521,8 +785,12 @@ class _Game2048PageState extends State<Game2048Page> {
 
     for (var r = 0; r < rowCount; r++) {
       for (var c = 0; c < colCount; c++) {
-        if (c < colCount - 1 && grid[r][c] == grid[r][c + 1]) return true;
-        if (r < rowCount - 1 && grid[r][c] == grid[r + 1][c]) return true;
+        if (c < colCount - 1 && grid[r][c] == grid[r][c + 1]) {
+          return true;
+        }
+        if (r < rowCount - 1 && grid[r][c] == grid[r + 1][c]) {
+          return true;
+        }
       }
     }
     return false;
@@ -555,127 +823,197 @@ class _Game2048PageState extends State<Game2048Page> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Верхняя системная панель (Справка и Язык)
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.home),
-                        tooltip: 'Главное меню',
-                      ),
-                      IconButton(
-                        onPressed: _resetGame,
-                        icon: const Icon(Icons.refresh),
-                        tooltip: 'Перезапустить',
-                      ),
-                      IconButton(
-                        onPressed: _canUndo ? _undoMove : null,
-                        icon: const Icon(Icons.undo),
-                        tooltip: 'Шаг назад',
-                      ),
                       IconButton(
                         onPressed: () => _openHelp(),
                         icon: const Icon(Icons.help_outline),
-                        tooltip: 'Помощь (F1)',
+                        tooltip: Localization.getText(_gameLang, 'help_tooltip'),
+                      ),
+                      IconButton(
+                        icon: Image.asset(
+                          'assets/icon/globe.png',
+                          width: 24,
+                          height: 24,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.language, size: 24),
+                        ),
+                        onPressed: () => showLanguageDialog(context, _gameLang, _changeLanguage),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  // Панель со счетом и рекордом
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildInfoCard('Score', '$_score'),
-                      _buildInfoCard('Best', '$_highScore'),
+                      _buildInfoCard(Localization.getText(_gameLang, 'score'), '$_score'),
+                      _buildInfoCard(Localization.getText(_gameLang, 'best'), '$_highScore'),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  
+                  // Контейнер, выравнивающий поле и приклеенные крупные кнопки строго по центру экрана
                   Expanded(
                     child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFBBADA0),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: AspectRatio(
-                          aspectRatio: colCount / rowCount,
-                          child: GestureDetector(
-                            onHorizontalDragEnd: (details) {
-                              if (details.primaryVelocity == null) return;
-                              if (details.primaryVelocity! > 0) _tryMove(_moveRight);
-                              else if (details.primaryVelocity! < 0) _tryMove(_moveLeft);
-                            },
-                            onVerticalDragEnd: (details) {
-                              if (details.primaryVelocity == null) return;
-                              if (details.primaryVelocity! > 0) _tryMove(_moveDown);
-                              else if (details.primaryVelocity! < 0) _tryMove(_moveUp);
-                            },
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final boardWidth = constraints.maxWidth;
-                                final boardHeight = constraints.maxHeight;
-
-                                final double spacing = 8.0;
-                                final double tileWidth = (boardWidth - (spacing * (colCount + 1))) / colCount;
-                                final double tileHeight = (boardHeight - (spacing * (rowCount + 1))) / rowCount;
-
-                                List<Widget> backgroundCells = [];
-                                for (int r = 0; r < rowCount; r++) {
-                                  for (int c = 0; c < colCount; c++) {
-                                    backgroundCells.add(
-                                      Positioned(
-                                        left: spacing + c * (tileWidth + spacing),
-                                        top: spacing + r * (tileHeight + spacing),
-                                        width: tileWidth,
-                                        height: tileHeight,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFCCC0B3),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return AspectRatio(
+                            aspectRatio: colCount / (rowCount + 0.65),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // КНОПКИ УПРАВЛЕНИЯ — УВЕЛИЧЕННЫЕ, СВЯЗАННЫЕ С КРАЯМИ ИГРОВОГО ПОЛЯ
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Row(
+                                    children: [
+                                      IconButton(
+                                        onPressed: () => Navigator.of(context).pop(),
+                                        icon: const Icon(Icons.home, size: 36),
+                                        tooltip: Localization.getText(_gameLang, 'home_tooltip'),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        style: IconButton.styleFrom(
+                                          foregroundColor: const Color(0xFF776E65),
+                                          minimumSize: const Size(48, 48),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                         ),
                                       ),
-                                    );
-                                  }
-                                }
-
-                                // Сортируем плитки так, чтобы въезжающие (isToDestroy) отрисовывались ПОД основными
-                                var sortedTiles = List<TileModel>.from(_tiles);
-                                sortedTiles.sort((a, b) => (a.isToDestroy ? 0 : 1).compareTo(b.isToDestroy ? 0 : 1));
-
-                                List<Widget> tileWidgets = sortedTiles.map((tile) {
-                                  return AnimatedPositioned(
-                                    key: ValueKey(tile.id),
-                                    duration: const Duration(milliseconds: 200), // Плавный переезд плитки
-                                    curve: Curves.easeOutQuad,
-                                    left: spacing + tile.col * (tileWidth + spacing),
-                                    top: spacing + tile.row * (tileHeight + spacing),
-                                    width: tileWidth,
-                                    height: tileHeight,
-                                    child: _AnimatedTileWidget(
-                                      tile: tile,
-                                      color: _tileColor(tile.value),
+                                      const Spacer(),
+                                      IconButton(
+                                        onPressed: _canUndo ? _undoMove : null,
+                                        icon: const Icon(Icons.undo, size: 36),
+                                        tooltip: Localization.getText(_gameLang, 'undo_tooltip'),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        style: IconButton.styleFrom(
+                                          foregroundColor: const Color(0xFF776E65),
+                                          minimumSize: const Size(48, 48),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 20),
+                                      IconButton(
+                                        onPressed: _resetGame,
+                                        icon: const Icon(Icons.refresh, size: 36),
+                                        tooltip: Localization.getText(_gameLang, 'refresh_tooltip'),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        style: IconButton.styleFrom(
+                                          foregroundColor: const Color(0xFF776E65),
+                                          minimumSize: const Size(48, 48),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                
+                                // Игровое поле
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFBBADA0),
+                                      borderRadius: BorderRadius.circular(14),
                                     ),
-                                  );
-                                }).toList();
+                                    child: GestureDetector(
+                                      onHorizontalDragEnd: (details) {
+                                        if (details.primaryVelocity == null) {
+                                          return;
+                                        }
+                                        if (details.primaryVelocity! > 0) {
+                                          _tryMove(_moveRight);
+                                        } else if (details.primaryVelocity! < 0) {
+                                          _tryMove(_moveLeft);
+                                        }
+                                      },
+                                      onVerticalDragEnd: (details) {
+                                        if (details.primaryVelocity == null) {
+                                          return;
+                                        }
+                                        if (details.primaryVelocity! > 0) {
+                                          _tryMove(_moveDown);
+                                        } else if (details.primaryVelocity! < 0) {
+                                          _tryMove(_moveUp);
+                                        }
+                                      },
+                                      child: LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          final boardWidth = constraints.maxWidth;
+                                          final boardHeight = constraints.maxHeight;
 
-                                return Stack(
-                                  children: [
-                                    ...backgroundCells,
-                                    ...tileWidgets,
-                                  ],
-                                );
-                              },
+                                          final double spacing = 8.0;
+                                          final double tileWidth = (boardWidth - (spacing * (colCount + 1))) / colCount;
+                                          final double tileHeight = (boardHeight - (spacing * (rowCount + 1))) / rowCount;
+
+                                          List<Widget> backgroundCells = [];
+                                          for (int r = 0; r < rowCount; r++) {
+                                            for (int c = 0; c < colCount; c++) {
+                                              backgroundCells.add(
+                                                Positioned(
+                                                  left: spacing + c * (tileWidth + spacing),
+                                                  top: spacing + r * (tileHeight + spacing),
+                                                  width: tileWidth,
+                                                  height: tileHeight,
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFCCC0B3),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          }
+
+                                          var sortedTiles = List<TileModel>.from(_tiles);
+                                          sortedTiles.sort((a, b) => (a.isToDestroy ? 0 : 1).compareTo(b.isToDestroy ? 0 : 1));
+
+                                          List<Widget> tileWidgets = sortedTiles.map((tile) {
+                                            return AnimatedPositioned(
+                                              key: ValueKey(tile.id),
+                                              duration: const Duration(milliseconds: 200),
+                                              curve: Curves.easeOutQuad,
+                                              left: spacing + tile.col * (tileWidth + spacing),
+                                              top: spacing + tile.row * (tileHeight + spacing),
+                                              width: tileWidth,
+                                              height: tileHeight,
+                                              child: _AnimatedTileWidget(
+                                                tile: tile,
+                                                color: _tileColor(tile.value),
+                                              ),
+                                            );
+                                          }).toList();
+
+                                          return Stack(
+                                            children: [
+                                              ...backgroundCells,
+                                              ...tileWidgets,
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ),
                   ),
                   if (_gameOver)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: Text('Game Over', textAlign: TextAlign.center, style: TextStyle(color: Colors.red, fontSize: 24, fontWeight: FontWeight.bold)),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        Localization.getText(_gameLang, 'game_over'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red, fontSize: 24, fontWeight: FontWeight.bold),
+                      ),
                     ),
                 ],
               ),
@@ -709,7 +1047,28 @@ class _Game2048PageState extends State<Game2048Page> {
       case 16: return const Color(0xFFF59563);
       case 32: return const Color(0xFFF67C5F);
       case 64: return const Color(0xFFF65E3B);
-      default: return const Color(0xFFEDCF72);
+      case 128: return const Color(0xFFEDCF72);
+      case 256: return const Color(0xFFEDCC61);
+      case 512: return const Color(0xFFEDC850);
+      case 1024: return const Color(0xFFEDC53F);
+      case 2048: return const Color(0xFFEDC22E);
+      case 4096: return const Color(0xFFB77AED); // Благородный лавандовый
+      case 8192: return const Color(0xFF8B5CF6); // Насыщенный фиолетовый
+      case 16384: return const Color(0xFF6366F1); // Индиго
+      case 32768: return const Color(0xFF3B82F6); // Яркий синий
+      case 65536: return const Color(0xFF0EA5E9); // Неоновый голубой
+      case 131072: return const Color(0xFF06B6D4); // Бирюзовая бездна
+      case 262144: return const Color(0xFF14B8A6); // Морская волна
+      case 524288: return const Color(0xFF10B981); // Мятно-изумрудный
+      case 1048576: return const Color(0xFFA3E635); // Кислотно-лаймовый
+      case 2097152: return const Color(0xFFFBBF24); // Янтарное золото
+      case 4194304: return const Color(0xFFF97316); // Сочный оранжевый
+      case 8388608: return const Color(0xFFEF4444); // Сигнальный красный
+      case 16777216: return const Color(0xFFDC2626); // Глубокий рубиновый
+      case 33554432: return const Color(0xFF450A0A); // Бордово-черный (Абсолютный максимум!)
+
+      // Дефолтный цвет на случай, если кто-то взломает игру или наберёт больше максимума
+      default: return const Color(0xFF1E1B18); 
     }
   }
 }
@@ -732,7 +1091,6 @@ class _AnimatedTileWidgetState extends State<_AnimatedTileWidget> with TickerPro
   late AnimationController _mergeController;
   late Animation<double> _scaleAnimation;
   
-  // Флаг, который переключится в true, когда анимация наплыва завершится
   bool _isVisualMergeReady = false;
 
   @override
@@ -753,17 +1111,15 @@ class _AnimatedTileWidgetState extends State<_AnimatedTileWidget> with TickerPro
       );
       _appearController.forward();
     } else if (widget.tile.isMerged) {
-      // Пока плитка летит (200мс), мы НЕ показываем новое число и не пульсируем
       _isVisualMergeReady = false;
       _scaleAnimation = ConstantTween<double>(1.0).animate(_mergeController);
 
       Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted) {
           setState(() {
-            _isVisualMergeReady = true; // Время пришло, показываем новое число!
+            _isVisualMergeReady = true;
           });
           
-          // Создаем красивый «взрывной» эффект расширения
           _scaleAnimation = TweenSequence<double>([
             TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 1.2).chain(CurveTween(curve: Curves.easeOut)), weight: 50),
             TweenSequenceItem(tween: Tween<double>(begin: 1.2, end: 1.0).chain(CurveTween(curve: Curves.easeIn)), weight: 50),
@@ -781,7 +1137,6 @@ class _AnimatedTileWidgetState extends State<_AnimatedTileWidget> with TickerPro
   @override
   void didUpdateWidget(covariant _AnimatedTileWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Если плитка внезапно получила статус слияния (произошел новый ход)
     if (widget.tile.isMerged && !oldWidget.tile.isMerged) {
       _setupAnimations();
     }
@@ -796,12 +1151,23 @@ class _AnimatedTileWidgetState extends State<_AnimatedTileWidget> with TickerPro
 
   @override
   Widget build(BuildContext context) {
-    // Если это плитка на уничтожение (которая въезжает), она сохраняет свой номинал.
-    // Если это принимающая плитка, то до окончания въезда (200мс) мы делим её текущее значение на 2,
-    // а как только анимация готова (_isVisualMergeReady) — показываем честный новый номинал.
     int valToPrint = widget.tile.value;
     if (widget.tile.isMerged && !_isVisualMergeReady && !widget.tile.isToDestroy) {
       valToPrint = widget.tile.value ~/ 2;
+    }
+
+    double fontSize;
+    if (valToPrint < 100) {
+      fontSize = 32.0;
+    } else {
+      fontSize = 24.0;
+    }
+
+    Color textColor;
+    if (valToPrint <= 4) {
+      textColor = const Color(0xFF776E65);
+    } else {
+      textColor = Colors.white;
     }
 
     return ScaleTransition(
@@ -815,9 +1181,9 @@ class _AnimatedTileWidgetState extends State<_AnimatedTileWidget> with TickerPro
           child: Text(
             '$valToPrint',
             style: TextStyle(
-              fontSize: valToPrint < 100 ? 32 : 24,
+              fontSize: fontSize,
               fontWeight: FontWeight.bold,
-              color: valToPrint <= 4 ? const Color(0xFF776E65) : Colors.white,
+              color: textColor,
             ),
           ),
         ),
