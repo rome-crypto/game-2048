@@ -55,6 +55,7 @@ class Localization {
       'help_controls_title': 'Управление',
       'help_controls_text': '• На смартфонах: Жесты свайпа по экрану в нужном направлении.\n• На ПК: Спайпы курсором по экрану в нужном направлении.',
       'help_close': 'Закрыть',
+      'win': 'Победа',
     },
     AppLanguage.en: {
       'title': '2048',
@@ -74,6 +75,7 @@ class Localization {
       'help_controls_title': 'Controls',
       'help_controls_text': '• On Mobile: Swipe gestures on the screen.\n• On PC: Press F1 key anytime during gameplay to open help.',
       'help_close': 'Close',
+      'win': 'Victory',
     },
     AppLanguage.zh: {
       'title': '2048',
@@ -93,6 +95,7 @@ class Localization {
       'help_controls_title': '操作说明',
       'help_controls_text': '• 手机端：在屏幕上顺着想要移动的方向滑动。\n• 电脑端：游戏中随时按下 F1 键即可调出帮助菜单。',
       'help_close': '关闭',
+      'win': '胜利',
     },
   };
 
@@ -421,6 +424,8 @@ class _Game2048PageState extends State<Game2048Page> {
   int _highScore = 0;
   bool _gameOver = false;
   int _tileIdCounter = 0;
+  bool _hasWon = false;        // Сработал ли вообще факт победы в этой партии
+  bool _showWinText = false;   // Нужно ли прямо сейчас показывать зеленую надпись "Победа"
 
   _PreviousGameState? _lastGameState;
   bool _canUndo = false;
@@ -513,6 +518,8 @@ class _Game2048PageState extends State<Game2048Page> {
 
   void _resetGame() {
     setState(() {
+      _hasWon = false;
+      _showWinText = false;
       _generateNewGameGrid();
       _saveCurrentState();
     });
@@ -602,60 +609,79 @@ class _Game2048PageState extends State<Game2048Page> {
     ));
   }
 
-  void _tryMove(void Function() moveDirection) {
-    if (_gameOver) {
-      return;
-    }
+void _tryMove(void Function() moveDirection) {
+  if (_gameOver) {
+    return;
+  }
 
-    _tiles.removeWhere((t) => t.isToDestroy);
+  // Сразу гасим надпись "Победа", если она отображалась. 
+  // Это сработает в момент, когда игрок совершает следующий ход после победы.
+  if (_showWinText) {
+    setState(() {
+      _showWinText = false;
+    });
+  }
 
-    final tilesBefore = _tiles.map((t) => TileModel(id: t.id, value: t.value, row: t.row, col: t.col)).toList();
-    final scoreBefore = _score;
-    final gameOverBefore = _gameOver;
+  _tiles.removeWhere((t) => t.isToDestroy);
 
-    for (var tile in _tiles) {
-      tile.isNew = false;
-      tile.isMerged = false;
-    }
+  final tilesBefore = _tiles.map((t) => TileModel(id: t.id, value: t.value, row: t.row, col: t.col)).toList();
+  final scoreBefore = _score;
+  final gameOverBefore = _gameOver;
 
-    moveDirection();
+  for (var tile in _tiles) {
+    tile.isNew = false;
+    tile.isMerged = false;
+  }
 
-    bool moved = false;
-    for (var current in _tiles.where((t) => !t.isToDestroy)) {
-      var before = tilesBefore.firstWhere((t) => t.id == current.id, orElse: () => TileModel(id: -1, value: 0, row: -1, col: -1));
-      if (before.id == -1 || before.row != current.row || before.col != current.col) {
-        moved = true;
-        break;
-      }
-    }
-    if (_tiles.any((t) => t.isToDestroy)) {
+  moveDirection();
+
+  bool moved = false;
+  for (var current in _tiles.where((t) => !t.isToDestroy)) {
+    var before = tilesBefore.firstWhere((t) => t.id == current.id, orElse: () => TileModel(id: -1, value: 0, row: -1, col: -1));
+    if (before.id == -1 || before.row != current.row || before.col != current.col) {
       moved = true;
-    }
-
-    if (moved) {
-      _lastGameState = _PreviousGameState(
-        tiles: tilesBefore,
-        score: scoreBefore,
-        gameOver: gameOverBefore,
-      );
-      _canUndo = true;
-
-      _addRandomTile();
-      if (!_canMove()) {
-        _gameOver = true;
-      }
-      setState(() {});
-      _saveCurrentState();
-
-      Future.delayed(const Duration(milliseconds: 200), () {
-        if (mounted) {
-          setState(() {
-            _tiles.removeWhere((t) => t.isToDestroy);
-          });
-        }
-      });
+      break;
     }
   }
+  if (_tiles.any((t) => t.isToDestroy)) {
+    moved = true;
+  }
+
+  if (moved) {
+    _lastGameState = _PreviousGameState(
+      tiles: tilesBefore,
+      score: scoreBefore,
+      gameOver: gameOverBefore,
+    );
+    _canUndo = true;
+
+    _addRandomTile();
+
+    // ПРОВЕРКА НА ДОСТИЖЕНИЕ 2048
+    // Если игрок еще не побеждал в текущей сессии, проверяем поле на наличие плитки 2048
+    if (!_hasWon) {
+      bool found2048 = _tiles.any((t) => t.value == 2048 && !t.isToDestroy);
+      if (found2048) {
+        _hasWon = true;       // Фиксируем победу в сессии (чтобы больше не спамить)
+        _showWinText = true;  // Включаем отображение зеленой надписи на этот ход
+      }
+    }
+
+    if (!_canMove()) {
+      _gameOver = true;
+    }
+    setState(() {});
+    _saveCurrentState();
+
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted) {
+        setState(() {
+          _tiles.removeWhere((t) => t.isToDestroy);
+        });
+      }
+    });
+  }
+}
 
   void _moveLeft() {
     for (var r = 0; r < rowCount; r++) {
@@ -1006,6 +1032,22 @@ class _Game2048PageState extends State<Game2048Page> {
                       ),
                     ),
                   ),
+                  
+                  // НАДПИСЬ О ПОБЕДЕ (Выводится снизу под игровым полем)
+                  if (_showWinText)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        Localization.getText(_gameLang, 'win'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.green, 
+                          fontSize: 24, 
+                          fontWeight: FontWeight.bold
+                        ),
+                      ),
+                    ),
+
                   if (_gameOver)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
