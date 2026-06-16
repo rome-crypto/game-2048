@@ -214,5 +214,68 @@ void main() {
 
       expect(engine.gameOver, true);
     });
+
+    test('Интеграция: сохранение и восстановление глубокой копии состояния (Undo)', () {
+      // Настраиваем начальное поле
+      engine.setBoard([
+        [2, 2, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+      ]);
+
+      // Совершаем ход — движок интегрирует данные в _lastState через _saveUndoState()
+      engine.moveLeft();
+
+      // Извлекаем состояние матрицы после хода
+      final boardAfterMove = engine.getBoard();
+      expect(boardAfterMove[0][0], 4); // Произошло слияние
+
+      // Выполняем откат (Undo)
+      engine.undo();
+
+      // Интеграционная проверка: проверяем, что ссылки на объекты TileModel 
+      // были скопированы глубоко, и поле вернулось к исходному состоянию [2, 2, 0, 0]
+      final boardAfterUndo = engine.getBoard();
+      expect(boardAfterUndo[0][0], 2);
+      expect(boardAfterUndo[0][1], 2);
+      expect(engine.score, 0); // Счет также успешно откатился
+    });
+
+    test('Производительность: оценка времени обработки 1000 случайных ходов на игровом поле', () {
+      final stopwatch = Stopwatch()..start();
+
+      engine.newGame();
+
+      // Список доступных направлений перемещения
+      final moves = [
+        engine.moveLeft,
+        engine.moveRight,
+        engine.moveUp,
+        engine.moveDown,
+      ];
+      
+      final randomMove = Random(42);
+
+      // Симулируем 1000 стремительных действий пользователя
+      for (int i = 0; i < 1000; i++) {
+        // Выбираем случайное направление
+        final move = moves[randomMove.nextInt(moves.length)];
+        move();
+
+        // Если наступил GameOver, искусственно очищаем поле для продолжения стресс-теста
+        if (engine.gameOver) {
+          engine.newGame();
+        }
+      }
+
+      stopwatch.stop();
+
+      // Проверяем, что обработка 1000 ходов заняла менее 100 миллисекунд (высокая производительность)
+      expect(stopwatch.elapsedMilliseconds, lessThan(100));
+      
+      // Дополнительно проверяем, что критическая структура данных не разрушилась
+      expect(engine.tiles, isNotNull);
+    });
   });
 }
